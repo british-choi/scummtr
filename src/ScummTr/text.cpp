@@ -27,6 +27,7 @@
 #include "ScummRp/block.hpp" // for tagToStr
 
 #include "text.hpp"
+#define KOREAN_TRANS
 
 const char Text::CT_NULL[256] =
 {
@@ -373,6 +374,13 @@ void Text::_writeEscMsg(const std::string &s)
 			countdown = Text::funcLen((byte)s[i]);
 			func = false;
 		}
+#ifdef KOREAN_TRANS
+		else if (i > 0 && (byte)s[i-1] > 0xA0 && (byte)s[i-1] < 0xFF && (byte)s[i] > 0xA0 && (byte)s[i] < 0xFF)
+		{
+			// previous byte is KS X 1001 upper byte
+			_writeChar((byte)s[i]);
+		}
+#endif
 		else if ((byte)s[i] == 0xFF || (byte)s[i] == 0xFE)
 		{
 			_writeEscChar((byte)s[i]);
@@ -626,17 +634,32 @@ int Text::getLengthOldMsg(FileHandle &f)
 int Text::getLengthMsg(FileHandle &f)
 {
 	byte b;
+#ifdef KOREAN_TRANS
+	byte pb=0;
+#endif
 	int32 start;
 	int i;
 
 	start = f->tellg(std::ios::beg);
 	while (!f->eof() && f->getByte(b) != 0)
 	{
+#ifdef KOREAN_TRANS
+		if (pb > 0xA0 && pb < 0xFF && b > 0xA0 && b < 0xFF)
+		{
+			// Previous byte is KS X 1001 Upper byte
+		} else
+#endif
 		if (b == 0xFF || b == 0xFE)
 		{
 			i = Text::funcLen(f->getByte(b));
 			f->seekg(i, std::ios::cur);
 		}
+#ifdef KOREAN_TRANS
+		else
+		{
+			pb = b;
+		}
+#endif
 	}
 
 	return f->tellg(std::ios::beg) - start - 1;
