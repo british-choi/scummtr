@@ -301,6 +301,9 @@ void Text::_writeEscPlain(const std::string &s)
 void Text::_writeEscRsc(const std::string &s)
 {
 	size_t size, countdown;
+#ifdef KOREAN_TRANS
+	byte pb = 0;
+#endif
 
 	countdown = 0;
 	size = s.size();
@@ -311,6 +314,15 @@ void Text::_writeEscRsc(const std::string &s)
 			_writeEscChar((byte)s[i]);
 			--countdown;
 		}
+#ifdef KOREAN_TRANS
+		else if (pb > 0xA0 && pb < 0xC9 && (byte)s[i] > 0xA0 && (byte)s[i] < 0xFF)
+		{
+			// previous byte is KS X 1001 upper byte
+			_writeChar((byte)s[i]);
+			pb = 0;
+			continue;
+		}
+#endif
 		else if ((byte)s[i] == 0xFF)
 		{
 			_writeEscChar((byte)s[i]);
@@ -323,6 +335,9 @@ void Text::_writeEscRsc(const std::string &s)
 		}
 		else
 		{
+#ifdef KOREAN_TRANS
+			pb = (byte)s[i];
+#endif
 			_writeChar((byte)s[i]);
 		}
 	}
@@ -357,6 +372,9 @@ void Text::_writeEscMsg(const std::string &s)
 {
 	bool func;
 	size_t size, countdown;
+#ifdef KOREAN_TRANS
+	byte pb = 0;
+#endif
 
 	func = false;
 	countdown = 0;
@@ -375,10 +393,12 @@ void Text::_writeEscMsg(const std::string &s)
 			func = false;
 		}
 #ifdef KOREAN_TRANS
-		else if (i > 0 && (byte)s[i-1] > 0xA0 && (byte)s[i-1] < 0xFF && (byte)s[i] > 0xA0 && (byte)s[i] < 0xFF)
+		else if (pb > 0xA0 && pb < 0xC9 && (byte)s[i] > 0xA0 && (byte)s[i] < 0xFF)
 		{
 			// previous byte is KS X 1001 upper byte
 			_writeChar((byte)s[i]);
+			pb = 0;
+			continue;
 		}
 #endif
 		else if ((byte)s[i] == 0xFF || (byte)s[i] == 0xFE)
@@ -389,6 +409,9 @@ void Text::_writeEscMsg(const std::string &s)
 		else
 		{
 			_writeChar((byte)s[i]);
+#ifdef KOREAN_TRANS
+			pb = (byte)s[i];
+#endif
 		}
 	}
 }
@@ -421,6 +444,9 @@ void Text::_checkMsg(const std::string &s, int l)
 {
 	size_t size, countdown;
 	bool func;
+#ifdef KOREAN_TRANS
+	byte pb = 0;
+#endif
 
 	func = false;
 	countdown = 0;
@@ -436,6 +462,13 @@ void Text::_checkMsg(const std::string &s, int l)
 			countdown = Text::funcLen((byte)s[i]);
 			func = false;
 		}
+#ifdef KOREAN_TRANS
+		else if (pb > 0xA0 && pb < 0xC9 && (byte)s[i] > 0xA0 && (byte)s[i] < 0xFF)
+		{
+			pb = 0;
+			continue;
+		}
+#endif
 		else if ((byte)s[i] == 0xFF || (byte)s[i] == 0xFE)
 		{
 			func = true;
@@ -444,6 +477,12 @@ void Text::_checkMsg(const std::string &s, int l)
 		{
 			throw Text::Error(xsprintf("NULL char in line %i", l));
 		}
+#ifdef KOREAN_TRANS
+		else
+		{
+			pb = (byte)s[i];
+		}
+#endif
 	}
 
 	if (countdown > 0 || func)
@@ -453,6 +492,9 @@ void Text::_checkMsg(const std::string &s, int l)
 void Text::_checkRsc(const std::string &s, int l)
 {
 	size_t size, countdown;
+#ifdef KOREAN_TRANS
+	byte pb = 0;
+#endif
 
 	countdown = 0;
 	size = s.size();
@@ -460,12 +502,22 @@ void Text::_checkRsc(const std::string &s, int l)
 	{
 		if (countdown > 0)
 			--countdown;
+#ifdef KOREAN_TRANS
+		else if (pb > 0xA0 && pb < 0xC9 && (byte)s[i] > 0xA0 && (byte)s[i] < 0xFF) {
+			pb = 0;
+			continue;
+		}
+#endif
 		else if ((byte)s[i] == 0xFF)
 			countdown = 3;
 		else if ((byte)s[i] == 0xFE)
 			countdown = 1;
 		else if (s[i] == '\0')
 			throw Text::Error(xsprintf("NULL char in line %i", l));
+#ifdef KOREAN_TRANS
+		else
+			pb = (byte)s[i];
+#endif
 	}
 
 	if (countdown > 0)
@@ -604,15 +656,27 @@ int Text::getLineLength(FileHandle &f, Text::LineType t)
 int Text::getLengthRsc(FileHandle &f)
 {
 	byte b;
+#ifdef KOREAN_TRANS
+	byte pb = 0;
+#endif
 	int32 start;
 
 	start = f->tellg(std::ios::beg);
 	while (!f->eof() && f->getByte(b) != 0)
 	{
+#ifdef KOREAN_TRANS
+		if (pb > 0xA0 && pb < 0xC9 && b > 0xA0 && b < 0xFF)
+			pb = 0;
+		else
+#endif
 		if (b == 0xFF)
 			f->seekg(3, std::ios::cur);
 		else if (b == 0xFE)
 			f->seekg(1, std::ios::cur);
+#ifdef KOREAN_TRANS
+		else
+			pb = b;
+#endif
 	}
 
 	return f->tellg(std::ios::beg) - start - 1;
@@ -635,7 +699,7 @@ int Text::getLengthMsg(FileHandle &f)
 {
 	byte b;
 #ifdef KOREAN_TRANS
-	byte pb=0;
+	byte pb = 0;
 #endif
 	int32 start;
 	int i;
@@ -644,9 +708,10 @@ int Text::getLengthMsg(FileHandle &f)
 	while (!f->eof() && f->getByte(b) != 0)
 	{
 #ifdef KOREAN_TRANS
-		if (pb > 0xA0 && pb < 0xFF && b > 0xA0 && b < 0xFF)
+		if (pb > 0xA0 && pb < 0xC9 && b > 0xA0 && b < 0xFF)
 		{
 			// Previous byte is KS X 1001 Upper byte
+			pb = 0;
 		} else
 #endif
 		if (b == 0xFF || b == 0xFE)
